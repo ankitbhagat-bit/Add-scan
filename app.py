@@ -4,7 +4,7 @@ import re
 
 st.set_page_config(page_title="Address Risk Scanner", layout="wide")
 
-st.title("📦 Address Risk Scanner Dashboardd")
+st.title("📦 Address Risk Scanner Dashboard")
 
 # =========================
 # FILE UPLOAD
@@ -156,6 +156,7 @@ if uploaded_file:
         "Customer Mobile",
         "Shipping Address Line 1",
         "Shipping Address Line 2",
+        "Pincode",
         "Pymt",
         "word_count",
         "risk_score",
