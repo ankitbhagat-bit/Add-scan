@@ -162,8 +162,8 @@ if uploaded_file:
         "word_count",
         "risk_score",
         "risk_flag",
-        "reasons",
-        "full_address"
+        "reasons"
+        # "full_address"
     ]]
 
     # SORT LIKE YOUR SCRIPT
