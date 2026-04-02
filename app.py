@@ -152,20 +152,16 @@ if uploaded_file:
 
     risky_df = risky_df[[
         "Display Order #",
-        "Products",
-        "Order Price",
         "Customer Name",
         "Customer Mobile",
         "Shipping Address Line 1",
         "Shipping Address Line 2",
-        "City, State",
-        "Pincode",
         "Pymt",
         "word_count",
         "risk_score",
         "risk_flag",
-        "reasons"
-        # "full_address"
+        "reasons",
+        "full_address"
     ]]
 
     # SORT LIKE YOUR SCRIPT
@@ -201,6 +197,52 @@ if uploaded_file:
     col1.metric("Total Orders", len(df))
     col2.metric("Risky Orders", len(risky_df))
     col3.metric("High Risk (JUNK)", len(risky_df[risky_df["risk_flag"] == "JUNK"]))
+
+# =========================
+# 🚨 DUPLICATE ORDER CHECK
+# =========================
+st.subheader("📞 Duplicate Order Checker")
+
+if st.button("Check Duplicate Orders"):
+
+    # Count occurrences of each phone
+    phone_counts = df["Customer Mobile"].value_counts()
+
+    # Keep phones with more than 1 order
+    duplicate_phones = phone_counts[phone_counts > 1].index
+
+    duplicate_df = df[df["Customer Mobile"].isin(duplicate_phones)].copy()
+
+    if len(duplicate_df) == 0:
+        st.success("✅ No duplicate orders found")
+    else:
+        st.error(f"🚨 Found {len(duplicate_df)} duplicate orders")
+
+        # Sort by phone + latest first (optional)
+        duplicate_df = duplicate_df.sort_values(
+            by=["Customer Mobile"],
+            ascending=True
+        )
+
+        # Show grouped summary
+        st.write("### 📊 Duplicate Phone Summary")
+        summary = duplicate_df["Customer Mobile"].value_counts().reset_index()
+        summary.columns = ["Phone Number", "Order Count"]
+        st.dataframe(summary, use_container_width=True)
+
+        # Show actual orders
+        st.write("### 📋 Duplicate Orders")
+        st.dataframe(duplicate_df, use_container_width=True)
+
+        # Download option
+        csv_dup = duplicate_df.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            "⬇ Download Duplicate Orders",
+            csv_dup,
+            "duplicate_orders.csv",
+            "text/csv"
+        )
 
     # =========================
     # TABLE
