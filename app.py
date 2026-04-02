@@ -156,6 +156,8 @@ if uploaded_file:
         "Customer Mobile",
         "Shipping Address Line 1",
         "Shipping Address Line 2",
+        "City, State",
+        "Pincode",
         "Pymt",
         "word_count",
         "risk_score",
