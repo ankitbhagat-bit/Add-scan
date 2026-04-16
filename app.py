@@ -153,6 +153,7 @@ if uploaded_file:
     risky_df = risky_df[[
         "Display Order #",
         "Products",
+        "Order Price",
         "Customer Name",
         "Customer Mobile",
         "Shipping Address Line 1",
