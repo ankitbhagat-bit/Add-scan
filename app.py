@@ -152,6 +152,7 @@ if uploaded_file:
 
     risky_df = risky_df[[
         "Display Order #",
+        "ShopifyTags",
         "Products",
         "Order Price",
         "Customer Name",
