@@ -4,7 +4,7 @@ import re
 
 st.set_page_config(page_title="Address Risk Scanner", layout="wide")
 
-st.title("📦Test Address Scanner")
+st.title("📦Address Scanner")
 
 # =========================
 # FILE UPLOAD
