@@ -715,7 +715,39 @@ def risk_logic(row, median_word_count):
     else:
         return "OK", score, ", ".join(reasons)
 
+def fill_missing_order_details(df):
+    """
+    Shopify sometimes gives multiple rows for one order.
+    Some line-item rows have product details but blank address/payment/pincode.
+    This fills missing fields using same order_id first, then same cx_mobile.
+    """
 
+    fill_cols = [
+        "cx_name",
+        "cx_email",
+        "shopify_tags",
+        "address",
+        "pincode",
+        "payment_method"
+    ]
+
+    for col in fill_cols:
+        if col in df.columns:
+            df[col] = df[col].replace("", pd.NA)
+
+            # Fill using same order_id
+            df[col] = df.groupby("order_id")[col].transform(
+                lambda x: x.ffill().bfill()
+            )
+
+            # If still missing, fill using same mobile number
+            df[col] = df.groupby("cx_mobile")[col].transform(
+                lambda x: x.ffill().bfill()
+            )
+
+            df[col] = df[col].fillna("")
+
+    return df
 # =====================================================
 # TOP SELECTOR
 # =====================================================
@@ -758,6 +790,13 @@ if uploaded_file:
     df["shopify_tags"] = df["shopify_tags"].apply(clean_text)
     df["product_sku"] = df["product_sku"].apply(clean_text)
     df["product_name"] = df["product_name"].apply(clean_text)
+    df["address"] = df["address"].apply(clean_text)
+    df["pincode"] = df["pincode"].apply(clean_pincode)
+    df["payment_method"] = df["payment_method"].apply(normalize_payment)
+    # Fill blank Shopify line-item rows using same order/customer data
+    df = fill_missing_order_details(df)
+    
+    # Clean again after filling
     df["address"] = df["address"].apply(clean_text)
     df["pincode"] = df["pincode"].apply(clean_pincode)
     df["payment_method"] = df["payment_method"].apply(normalize_payment)
