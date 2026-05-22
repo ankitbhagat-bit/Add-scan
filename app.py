@@ -6,6 +6,7 @@ st.set_page_config(page_title="Address Risk Scanner", layout="wide")
 
 st.title("Address Risk Scanner")
 
+
 # =====================================================
 # HELPERS
 # =====================================================
@@ -13,8 +14,13 @@ st.title("Address Risk Scanner")
 def clean_text(value):
     if pd.isna(value):
         return ""
+
     value = str(value)
     value = value.replace("`", "").replace("'", "").strip()
+
+    # Clean common Shopify encoding issue
+    value = value.replace("â‚¹", "₹")
+
     return value
 
 
@@ -43,35 +49,64 @@ def clean_pincode(value):
 def normalize_payment(value):
     value = clean_text(value).upper()
 
+    if value == "":
+        return "UNKNOWN"
+
     if "COD" in value or "CASH ON DELIVERY" in value:
         return "COD"
 
-    if "PREPAID" in value or "PREPAID" in value.replace(" ", ""):
+    if "PREPAID" in value or "PRE PAID" in value:
         return "PREPAID"
 
-    if "PAID" in value and "PENDING" not in value:
+    if value in ["PAID", "AUTHORIZED", "PARTIALLY PAID"]:
         return "PREPAID"
 
-    if "PENDING" in value:
+    if value in ["PENDING", "UNPAID"]:
         return "COD"
 
-    return value if value else "UNKNOWN"
+    return value
 
 
 def safe_col(df, col_name, default=""):
+    df.columns = df.columns.str.strip()
+
     if col_name in df.columns:
         return df[col_name].apply(clean_text)
-    return pd.Series([default] * len(df))
+
+    return pd.Series([default] * len(df), index=df.index)
+
+
+def first_non_empty(df, cols, default=""):
+    df.columns = df.columns.str.strip()
+
+    result = pd.Series([default] * len(df), index=df.index)
+
+    for col in cols:
+        if col in df.columns:
+            current = df[col].apply(clean_text)
+            result = result.where(result != "", current)
+
+    return result
 
 
 def combine_cols(df, cols):
+    df.columns = df.columns.str.strip()
+
     available_cols = [col for col in cols if col in df.columns]
 
     if not available_cols:
-        return pd.Series([""] * len(df))
+        return pd.Series([""] * len(df), index=df.index)
 
     combined = df[available_cols].fillna("").astype(str).agg(" ".join, axis=1)
+
     return combined.apply(clean_text)
+
+
+def numeric_col(df, col_name, default=0):
+    if col_name in df.columns:
+        return pd.to_numeric(df[col_name], errors="coerce").fillna(default)
+
+    return pd.Series([default] * len(df), index=df.index)
 
 
 # =====================================================
@@ -80,113 +115,431 @@ def combine_cols(df, cols):
 
 def map_unicommerce(df):
     """
-    Your current Unicommerce structure.
+    Unicommerce structure.
     """
 
-    mapped = pd.DataFrame()
+    df.columns = df.columns.str.strip()
+
+    mapped = pd.DataFrame(index=df.index)
 
     mapped["order_id"] = safe_col(df, "Display Order #")
-    mapped["cx_name"] = safe_col(df, "Customer Name")
-    mapped["cx_mobile"] = safe_col(df, "Customer Mobile").apply(clean_phone)
-    mapped["cx_email"] = safe_col(df, "Customer Email") if "Customer Email" in df.columns else ""
-    mapped["shopify_tags"] = safe_col(df, "ShopifyTags")
-    mapped["product_sku"] = safe_col(df, "SKU") if "SKU" in df.columns else safe_col(df, "Products")
-    mapped["product_name"] = safe_col(df, "Products")
+
+    mapped["cx_name"] = first_non_empty(
+        df,
+        [
+            "Customer Name",
+            "Customer",
+            "Name"
+        ]
+    )
+
+    mapped["cx_mobile"] = first_non_empty(
+        df,
+        [
+            "Customer Mobile",
+            "Mobile",
+            "Phone",
+            "Customer Phone"
+        ]
+    ).apply(clean_phone)
+
+    mapped["cx_email"] = first_non_empty(
+        df,
+        [
+            "Customer Email",
+            "Email",
+            "Customer Email ID"
+        ]
+    )
+
+    mapped["shopify_tags"] = first_non_empty(
+        df,
+        [
+            "ShopifyTags",
+            "Shopify Tags",
+            "Tags"
+        ]
+    )
+
+    mapped["product_sku"] = first_non_empty(
+        df,
+        [
+            "SKU",
+            "Product SKU",
+            "Item SKU",
+            "Products"
+        ]
+    )
+
+    mapped["product_name"] = first_non_empty(
+        df,
+        [
+            "Products",
+            "Product Name",
+            "Item Name"
+        ]
+    )
+
     mapped["address_line_1"] = safe_col(df, "Shipping Address Line 1")
     mapped["address_line_2"] = safe_col(df, "Shipping Address Line 2")
-    mapped["city_state"] = safe_col(df, "City, State")
+
+    mapped["city_state"] = first_non_empty(
+        df,
+        [
+            "City, State",
+            "City State"
+        ]
+    )
+
     mapped["address"] = combine_cols(
         df,
         [
             "Shipping Address Line 1",
             "Shipping Address Line 2",
-            "City, State"
+            "City, State",
+            "City State"
         ]
     )
-    mapped["pincode"] = safe_col(df, "Pincode").apply(clean_pincode)
-    mapped["payment_method"] = safe_col(df, "Pymt").apply(normalize_payment)
-    mapped["quantity"] = pd.to_numeric(safe_col(df, "Quantity", 1), errors="coerce").fillna(1).astype(int)
-    mapped["order_price"] = pd.to_numeric(safe_col(df, "Order Price", 0), errors="coerce").fillna(0)
+
+    mapped["pincode"] = first_non_empty(
+        df,
+        [
+            "Pincode",
+            "Pin Code",
+            "Postal Code",
+            "Zip"
+        ]
+    ).apply(clean_pincode)
+
+    mapped["payment_method"] = first_non_empty(
+        df,
+        [
+            "Pymt",
+            "Payment Method",
+            "Payment Mode",
+            "Payment Type"
+        ]
+    ).apply(normalize_payment)
+
+    mapped["quantity"] = pd.to_numeric(
+        first_non_empty(
+            df,
+            [
+                "Quantity",
+                "Qty",
+                "Item Quantity"
+            ],
+            default="1"
+        ),
+        errors="coerce"
+    ).fillna(1).astype(int)
+
+    mapped["order_price"] = pd.to_numeric(
+        first_non_empty(
+            df,
+            [
+                "Order Price",
+                "Total",
+                "Amount",
+                "Order Amount"
+            ],
+            default="0"
+        ),
+        errors="coerce"
+    ).fillna(0)
 
     return mapped
 
 
 def map_easyecom(df):
     """
-    EasyEcom structure shared by you.
+    EasyEcom structure.
+    Note: The sample EasyEcom file shared does not include customer name, phone, email, or full address.
     """
 
-    mapped = pd.DataFrame()
+    df.columns = df.columns.str.strip()
 
-    mapped["order_id"] = safe_col(df, "Order Number")
-    mapped["cx_name"] = ""
-    mapped["cx_mobile"] = ""
-    mapped["cx_email"] = ""
-    mapped["shopify_tags"] = ""
-    mapped["product_sku"] = safe_col(df, "SKU")
+    mapped = pd.DataFrame(index=df.index)
+
+    mapped["order_id"] = first_non_empty(
+        df,
+        [
+            "Order Number",
+            "Suborder Number",
+            "Easy Id",
+            "id"
+        ]
+    )
+
+    mapped["cx_name"] = first_non_empty(
+        df,
+        [
+            "Customer Name",
+            "Shipping Name",
+            "Name"
+        ]
+    )
+
+    mapped["cx_mobile"] = first_non_empty(
+        df,
+        [
+            "Customer Mobile",
+            "Customer Phone",
+            "Shipping Phone",
+            "Phone",
+            "Mobile"
+        ]
+    ).apply(clean_phone)
+
+    mapped["cx_email"] = first_non_empty(
+        df,
+        [
+            "Customer Email",
+            "Email"
+        ]
+    )
+
+    mapped["shopify_tags"] = first_non_empty(
+        df,
+        [
+            "Tags",
+            "ShopifyTags",
+            "Shopify Tags"
+        ]
+    )
+
+    mapped["product_sku"] = first_non_empty(
+        df,
+        [
+            "SKU",
+            "Marketplace SKU"
+        ]
+    )
+
     mapped["product_name"] = safe_col(df, "Product Name")
-    mapped["address_line_1"] = ""
-    mapped["address_line_2"] = ""
-    mapped["city_state"] = combine_cols(df, ["Shipping City", "Shipping State"])
-    mapped["address"] = combine_cols(df, ["Shipping City", "Shipping State", "Shipping Postal code"])
-    mapped["pincode"] = safe_col(df, "Shipping Postal code").apply(clean_pincode)
-    mapped["payment_method"] = safe_col(df, "Payment Status").apply(normalize_payment)
-    mapped["quantity"] = pd.to_numeric(safe_col(df, "Quantity", 1), errors="coerce").fillna(1).astype(int)
-    mapped["order_price"] = pd.to_numeric(safe_col(df, "Payment Amount", 0), errors="coerce").fillna(0)
+
+    mapped["address_line_1"] = first_non_empty(
+        df,
+        [
+            "Shipping Address",
+            "Address",
+            "Address Line 1"
+        ]
+    )
+
+    mapped["address_line_2"] = first_non_empty(
+        df,
+        [
+            "Address Line 2",
+            "Shipping Address 2"
+        ]
+    )
+
+    mapped["city_state"] = combine_cols(
+        df,
+        [
+            "Shipping City",
+            "Shipping State"
+        ]
+    )
+
+    full_address = combine_cols(
+        df,
+        [
+            "Shipping Address",
+            "Address",
+            "Address Line 1",
+            "Address Line 2",
+            "Shipping City",
+            "Shipping State",
+            "Shipping Postal code"
+        ]
+    )
+
+    fallback_city_pin = combine_cols(
+        df,
+        [
+            "Shipping City",
+            "Shipping State",
+            "Shipping Postal code"
+        ]
+    )
+
+    mapped["address"] = full_address.where(full_address != "", fallback_city_pin)
+
+    mapped["pincode"] = first_non_empty(
+        df,
+        [
+            "Shipping Postal code",
+            "Pincode",
+            "Pin Code",
+            "Postal Code"
+        ]
+    ).apply(clean_pincode)
+
+    mapped["payment_method"] = first_non_empty(
+        df,
+        [
+            "Payment Status",
+            "Payment Method",
+            "Payment Mode"
+        ]
+    ).apply(normalize_payment)
+
+    mapped["quantity"] = pd.to_numeric(
+        first_non_empty(
+            df,
+            [
+                "Quantity",
+                "Qty"
+            ],
+            default="1"
+        ),
+        errors="coerce"
+    ).fillna(1).astype(int)
+
+    mapped["order_price"] = pd.to_numeric(
+        first_non_empty(
+            df,
+            [
+                "Payment Amount",
+                "Selling Price",
+                "MRP"
+            ],
+            default="0"
+        ),
+        errors="coerce"
+    ).fillna(0)
 
     return mapped
 
 
 def map_shopify(df):
     """
-    Shopify export structure shared by you.
+    Shopify export structure.
+    Strong fallback added for address, pincode, phone and payment mode.
     """
 
-    mapped = pd.DataFrame()
+    df.columns = df.columns.str.strip()
+
+    mapped = pd.DataFrame(index=df.index)
 
     mapped["order_id"] = safe_col(df, "Name")
-    mapped["cx_name"] = safe_col(df, "Shipping Name")
-    mapped["cx_mobile"] = safe_col(df, "Shipping Phone").apply(clean_phone)
 
-    # fallback if Shipping Phone is empty
-    billing_phone = safe_col(df, "Billing Phone").apply(clean_phone)
-    phone = safe_col(df, "Phone").apply(clean_phone)
+    mapped["cx_name"] = first_non_empty(
+        df,
+        [
+            "Shipping Name",
+            "Billing Name"
+        ]
+    )
 
-    mapped["cx_mobile"] = mapped["cx_mobile"].where(mapped["cx_mobile"] != "", billing_phone)
-    mapped["cx_mobile"] = mapped["cx_mobile"].where(mapped["cx_mobile"] != "", phone)
+    mapped["cx_mobile"] = first_non_empty(
+        df,
+        [
+            "Shipping Phone",
+            "Billing Phone",
+            "Phone"
+        ]
+    ).apply(clean_phone)
 
     mapped["cx_email"] = safe_col(df, "Email")
     mapped["shopify_tags"] = safe_col(df, "Tags")
+
     mapped["product_sku"] = safe_col(df, "Lineitem sku")
     mapped["product_name"] = safe_col(df, "Lineitem name")
 
-    mapped["address_line_1"] = safe_col(df, "Shipping Address1")
-    mapped["address_line_2"] = safe_col(df, "Shipping Address2")
-    mapped["city_state"] = combine_cols(df, ["Shipping City", "Shipping Province"])
-
-    mapped["address"] = combine_cols(
+    mapped["address_line_1"] = first_non_empty(
         df,
         [
+            "Shipping Address1",
+            "Shipping Street",
+            "Billing Address1",
+            "Billing Street"
+        ]
+    )
+
+    mapped["address_line_2"] = first_non_empty(
+        df,
+        [
+            "Shipping Address2",
+            "Billing Address2"
+        ]
+    )
+
+    mapped["city_state"] = combine_cols(
+        df,
+        [
+            "Shipping City",
+            "Shipping Province",
+            "Shipping Province Name",
+            "Billing City",
+            "Billing Province",
+            "Billing Province Name"
+        ]
+    )
+
+    shipping_address = combine_cols(
+        df,
+        [
+            "Shipping Street",
             "Shipping Address1",
             "Shipping Address2",
             "Shipping City",
             "Shipping Province",
+            "Shipping Province Name",
             "Shipping Country"
         ]
     )
 
-    mapped["pincode"] = safe_col(df, "Shipping Zip").apply(clean_pincode)
-    mapped["payment_method"] = safe_col(df, "Payment Method").apply(normalize_payment)
-
-    # fallback from shipping method if payment method is empty
-    shipping_method_payment = safe_col(df, "Shipping Method").apply(normalize_payment)
-    mapped["payment_method"] = mapped["payment_method"].where(
-        mapped["payment_method"] != "UNKNOWN",
-        shipping_method_payment
+    billing_address = combine_cols(
+        df,
+        [
+            "Billing Street",
+            "Billing Address1",
+            "Billing Address2",
+            "Billing City",
+            "Billing Province",
+            "Billing Province Name",
+            "Billing Country"
+        ]
     )
 
-    mapped["quantity"] = pd.to_numeric(safe_col(df, "Lineitem quantity", 1), errors="coerce").fillna(1).astype(int)
-    mapped["order_price"] = pd.to_numeric(safe_col(df, "Total", 0), errors="coerce").fillna(0)
+    mapped["address"] = shipping_address.where(shipping_address != "", billing_address)
+
+    mapped["pincode"] = first_non_empty(
+        df,
+        [
+            "Shipping Zip",
+            "Billing Zip"
+        ]
+    ).apply(clean_pincode)
+
+    payment_from_method = safe_col(df, "Payment Method").apply(normalize_payment)
+    payment_from_shipping = safe_col(df, "Shipping Method").apply(normalize_payment)
+    payment_from_financial = safe_col(df, "Financial Status").apply(normalize_payment)
+
+    mapped["payment_method"] = payment_from_method
+
+    mapped["payment_method"] = mapped["payment_method"].where(
+        mapped["payment_method"] != "UNKNOWN",
+        payment_from_shipping
+    )
+
+    mapped["payment_method"] = mapped["payment_method"].where(
+        mapped["payment_method"] != "UNKNOWN",
+        payment_from_financial
+    )
+
+    mapped["quantity"] = pd.to_numeric(
+        safe_col(df, "Lineitem quantity", 1),
+        errors="coerce"
+    ).fillna(1).astype(int)
+
+    mapped["order_price"] = pd.to_numeric(
+        safe_col(df, "Total", 0),
+        errors="coerce"
+    ).fillna(0)
 
     return mapped
 
@@ -209,7 +562,12 @@ def standardize_file(df, file_type):
 # =====================================================
 
 def has_fake_words(text):
-    return bool(re.search(r"\b(test|asdf|xxxx|na|none|null|dummy|sample)\b", str(text).lower()))
+    return bool(
+        re.search(
+            r"\b(test|asdf|xxxx|na|none|null|dummy|sample|abc|xyz)\b",
+            str(text).lower()
+        )
+    )
 
 
 def has_repeated_chars(text):
@@ -261,10 +619,16 @@ def landmark_score(text):
         "samne",
         "pass",
         "paas",
-        "ke paas"
+        "ke paas",
+        "gali",
+        "mandir",
+        "school",
+        "hospital",
+        "chowk"
     ]
 
     text = str(text).lower()
+
     return sum(1 for keyword in keywords if keyword in text)
 
 
@@ -374,33 +738,38 @@ if uploaded_file:
     except UnicodeDecodeError:
         raw_df = pd.read_csv(uploaded_file, dtype=str, encoding="latin1")
 
+    raw_df.columns = raw_df.columns.str.strip()
     raw_df.fillna("", inplace=True)
 
-    st.write("Uploaded file preview")
+    st.write("Uploaded File Preview")
     st.dataframe(raw_df.head(5), use_container_width=True)
 
     df = standardize_file(raw_df, file_type)
     df.fillna("", inplace=True)
 
     # =====================================================
-    # REQUIRED STANDARD COLUMNS
+    # REQUIRED STANDARD COLUMNS CLEANUP
     # =====================================================
 
-    df["address"] = df["address"].apply(clean_text)
+    df["order_id"] = df["order_id"].apply(clean_text)
+    df["cx_name"] = df["cx_name"].apply(clean_text)
     df["cx_mobile"] = df["cx_mobile"].apply(clean_phone)
+    df["cx_email"] = df["cx_email"].apply(clean_text)
+    df["shopify_tags"] = df["shopify_tags"].apply(clean_text)
+    df["product_sku"] = df["product_sku"].apply(clean_text)
+    df["product_name"] = df["product_name"].apply(clean_text)
+    df["address"] = df["address"].apply(clean_text)
     df["pincode"] = df["pincode"].apply(clean_pincode)
     df["payment_method"] = df["payment_method"].apply(normalize_payment)
 
     df["word_count"] = df["address"].apply(lambda x: len(str(x).split()))
+
     median_word_count = df["word_count"].median()
 
     if pd.isna(median_word_count):
         median_word_count = 0
 
-    if "cx_mobile" in df.columns:
-        df["phone_count"] = df["cx_mobile"].map(df["cx_mobile"].value_counts())
-    else:
-        df["phone_count"] = 0
+    df["phone_count"] = df["cx_mobile"].map(df["cx_mobile"].value_counts())
 
     df[["risk_flag", "risk_score", "reasons"]] = df.apply(
         lambda row: pd.Series(risk_logic(row, median_word_count)),
@@ -432,7 +801,10 @@ if uploaded_file:
 
     scanner_df = df[visible_cols].copy()
 
-    risky_df = scanner_df[scanner_df["risk_flag"].isin(["JUNK", "SUSPICIOUS"])].copy()
+    risky_df = scanner_df[
+        scanner_df["risk_flag"].isin(["JUNK", "SUSPICIOUS"])
+    ].copy()
+
     risky_df = risky_df.sort_values(by="risk_score", ascending=False)
 
     # =====================================================
@@ -477,14 +849,16 @@ if uploaded_file:
 
     col1, col2, col3, col4 = st.columns(4)
 
-    col1.metric("Total Orders", len(df))
+    col1.metric("Total Orders", len(scanner_df))
     col2.metric("Risky Orders", len(risky_df))
     col3.metric("High Risk JUNK", len(risky_df[risky_df["risk_flag"] == "JUNK"]))
     col4.metric("Suspicious", len(risky_df[risky_df["risk_flag"] == "SUSPICIOUS"]))
 
     st.write("Risk Distribution")
-    risk_distribution = df["risk_flag"].value_counts().reset_index()
+
+    risk_distribution = scanner_df["risk_flag"].value_counts().reset_index()
     risk_distribution.columns = ["Risk Type", "Order Count"]
+
     st.dataframe(risk_distribution, use_container_width=True)
 
     # =====================================================
@@ -497,10 +871,13 @@ if uploaded_file:
 
     with col1:
         st.write("Quantity More Than 1")
+
         quantity_df = scanner_df[scanner_df["quantity"] > 1].copy()
+
         st.dataframe(quantity_df, use_container_width=True)
 
         csv_quantity = quantity_df.to_csv(index=False).encode("utf-8")
+
         st.download_button(
             "Download Quantity More Than 1 Orders",
             csv_quantity,
@@ -510,6 +887,7 @@ if uploaded_file:
 
     with col2:
         st.write("Payment Method Summary")
+
         payment_summary = scanner_df.groupby("payment_method").agg(
             order_count=("order_id", "count"),
             total_amount=("order_price", "sum")
@@ -518,6 +896,7 @@ if uploaded_file:
         st.dataframe(payment_summary, use_container_width=True)
 
         csv_payment = payment_summary.to_csv(index=False).encode("utf-8")
+
         st.download_button(
             "Download Payment Method Summary",
             csv_payment,
@@ -526,6 +905,7 @@ if uploaded_file:
         )
 
     st.write("Product Name Summary")
+
     product_summary = scanner_df.groupby("product_name").agg(
         order_count=("order_id", "count"),
         total_quantity=("quantity", "sum"),
@@ -535,6 +915,7 @@ if uploaded_file:
     st.dataframe(product_summary, use_container_width=True)
 
     csv_product = product_summary.to_csv(index=False).encode("utf-8")
+
     st.download_button(
         "Download Product Summary",
         csv_product,
@@ -554,7 +935,10 @@ if uploaded_file:
         scanner_df["cx_mobile"].duplicated(keep=False)
     ].copy()
 
-    duplicate_df = duplicate_df.sort_values(by=["cx_mobile", "order_id"], ascending=True)
+    duplicate_df = duplicate_df.sort_values(
+        by=["cx_mobile", "order_id"],
+        ascending=True
+    )
 
     if len(duplicate_df) == 0:
         st.success("No duplicate orders found")
@@ -562,11 +946,14 @@ if uploaded_file:
         st.error(f"Found {len(duplicate_df)} orders with duplicate phone numbers")
 
         st.write("Duplicate Phone Summary")
+
         duplicate_summary = duplicate_df["cx_mobile"].value_counts().reset_index()
         duplicate_summary.columns = ["Phone Number", "Order Count"]
+
         st.dataframe(duplicate_summary, use_container_width=True)
 
         st.write("Duplicate Order Details")
+
         st.dataframe(duplicate_df, use_container_width=True)
 
         csv_dup = duplicate_df.to_csv(index=False).encode("utf-8")
@@ -583,6 +970,7 @@ if uploaded_file:
     # =====================================================
 
     st.subheader(f"Orders to Review ({len(filtered_df)})")
+
     st.dataframe(filtered_df, use_container_width=True)
 
     csv_risky = filtered_df.to_csv(index=False).encode("utf-8")
@@ -599,6 +987,7 @@ if uploaded_file:
     # =====================================================
 
     st.subheader("Full Standardized Data")
+
     st.dataframe(scanner_df, use_container_width=True)
 
     csv_full = scanner_df.to_csv(index=False).encode("utf-8")
