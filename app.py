@@ -79,14 +79,14 @@ def safe_col(df, col_name, default=""):
 def first_non_empty(df, cols, default=""):
     df.columns = df.columns.str.strip()
 
-    result = pd.Series([default] * len(df), index=df.index)
+    result = pd.Series([""] * len(df), index=df.index)
 
     for col in cols:
         if col in df.columns:
             current = df[col].apply(clean_text)
             result = result.where(result != "", current)
 
-    return result
+    return result.replace("", default)
 
 
 def combine_cols(df, cols):
@@ -254,7 +254,9 @@ def map_unicommerce(df):
 def map_easyecom(df):
     """
     EasyEcom structure.
-    Note: The sample EasyEcom file shared does not include customer name, phone, email, or full address.
+    Supports the newer EasyEcom order export that includes columns like:
+    Reference Code, Suborder No, Shipping Customer Name, Mobile No,
+    Shipping Address Line 1/2, Shipping Zip Code, Payment Mode, etc.
     """
 
     df.columns = df.columns.str.strip()
@@ -264,8 +266,12 @@ def map_easyecom(df):
     mapped["order_id"] = first_non_empty(
         df,
         [
-            "Order Number",
+            "Reference Code",
+            "Suborder No",
             "Suborder Number",
+            "MP Ref No",
+            "EE Invoice No",
+            "Order Number",
             "Easy Id",
             "id"
         ]
@@ -274,6 +280,8 @@ def map_easyecom(df):
     mapped["cx_name"] = first_non_empty(
         df,
         [
+            "Shipping Customer Name",
+            "Billing Customer Name",
             "Customer Name",
             "Shipping Name",
             "Name"
@@ -283,6 +291,7 @@ def map_easyecom(df):
     mapped["cx_mobile"] = first_non_empty(
         df,
         [
+            "Mobile No",
             "Customer Mobile",
             "Customer Phone",
             "Shipping Phone",
@@ -302,6 +311,9 @@ def map_easyecom(df):
     mapped["shopify_tags"] = first_non_empty(
         df,
         [
+            "Discount Codes",
+            "MP Alias",
+            "B2B Sales Channel",
             "Tags",
             "ShopifyTags",
             "Shopify Tags"
@@ -312,7 +324,9 @@ def map_easyecom(df):
         df,
         [
             "SKU",
-            "Marketplace SKU"
+            "Marketplace Sku",
+            "Marketplace SKU",
+            "Accounting Sku"
         ]
     )
 
@@ -321,6 +335,7 @@ def map_easyecom(df):
     mapped["address_line_1"] = first_non_empty(
         df,
         [
+            "Shipping Address Line 1",
             "Shipping Address",
             "Address",
             "Address Line 1"
@@ -330,6 +345,7 @@ def map_easyecom(df):
     mapped["address_line_2"] = first_non_empty(
         df,
         [
+            "Shipping Address Line 2",
             "Address Line 2",
             "Shipping Address 2"
         ]
@@ -339,19 +355,24 @@ def map_easyecom(df):
         df,
         [
             "Shipping City",
-            "Shipping State"
+            "Shipping State",
+            "Shipping Country"
         ]
     )
 
     full_address = combine_cols(
         df,
         [
+            "Shipping Address Line 1",
+            "Shipping Address Line 2",
             "Shipping Address",
             "Address",
             "Address Line 1",
             "Address Line 2",
             "Shipping City",
             "Shipping State",
+            "Shipping Country",
+            "Shipping Zip Code",
             "Shipping Postal code"
         ]
     )
@@ -361,6 +382,8 @@ def map_easyecom(df):
         [
             "Shipping City",
             "Shipping State",
+            "Shipping Country",
+            "Shipping Zip Code",
             "Shipping Postal code"
         ]
     )
@@ -370,19 +393,23 @@ def map_easyecom(df):
     mapped["pincode"] = first_non_empty(
         df,
         [
+            "Shipping Zip Code",
             "Shipping Postal code",
             "Pincode",
             "Pin Code",
-            "Postal Code"
+            "Postal Code",
+            "Zip",
+            "Zip Code"
         ]
     ).apply(clean_pincode)
 
     mapped["payment_method"] = first_non_empty(
         df,
         [
+            "Payment Mode",
             "Payment Status",
             "Payment Method",
-            "Payment Mode"
+            "Payment Gateway"
         ]
     ).apply(normalize_payment)
 
@@ -390,6 +417,10 @@ def map_easyecom(df):
         first_non_empty(
             df,
             [
+                "Suborder Quantity",
+                "Item Quantity",
+                "Order Quantity",
+                "Shipped Quantity",
                 "Quantity",
                 "Qty"
             ],
@@ -402,6 +433,11 @@ def map_easyecom(df):
         first_non_empty(
             df,
             [
+                "Order Invoice Amount",
+                "Collectible Amount",
+                "Tax Item Price(Including Tax)",
+                "COD(Including Tax)",
+                "Item Price",
                 "Payment Amount",
                 "Selling Price",
                 "MRP"
