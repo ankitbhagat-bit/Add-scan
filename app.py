@@ -755,17 +755,23 @@ def risk_logic(row, median_word_count):
 def manual_address_check(address, payment_method="COD", median_word_count=5):
     """
     Score a manually typed address using the same risk logic.
-    Neutral customer fields keep the result focused on the address quality.
+    Extract phone and pincode from pasted text when available.
+    Neutral fallback fields keep the result focused on address quality.
     """
 
     clean_address = clean_text(address)
+    phone_matches = re.findall(r"(?<!\d)(?:\+?91)?[6-9]\d{9}(?!\d)", clean_address)
+    pincode_matches = re.findall(r"(?<!\d)\d{6}(?!\d)", clean_address)
+
+    manual_phone = clean_phone(phone_matches[0]) if phone_matches else "9123456780"
+    manual_pincode = clean_pincode(pincode_matches[-1]) if pincode_matches else "110001"
 
     row = {
         "address": clean_address,
         "word_count": len(clean_address.split()),
         "payment_method": normalize_payment(payment_method),
-        "cx_mobile": "9999999999",
-        "pincode": "110001",
+        "cx_mobile": manual_phone,
+        "pincode": manual_pincode,
         "cx_name": "Manual Test",
         "phone_count": 1
     }
