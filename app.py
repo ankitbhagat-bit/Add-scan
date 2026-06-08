@@ -763,8 +763,8 @@ def manual_address_check(address, payment_method="COD", median_word_count=5):
     phone_matches = re.findall(r"(?<!\d)(?:\+?91)?[6-9]\d{9}(?!\d)", clean_address)
     pincode_matches = re.findall(r"(?<!\d)\d{6}(?!\d)", clean_address)
 
-    manual_phone = clean_phone(phone_matches[0]) if phone_matches else "9123456780"
-    manual_pincode = clean_pincode(pincode_matches[-1]) if pincode_matches else "110001"
+    manual_phone = clean_phone(phone_matches[0]) if phone_matches else ""
+    manual_pincode = clean_pincode(pincode_matches[-1]) if pincode_matches else ""
 
     row = {
         "address": clean_address,
