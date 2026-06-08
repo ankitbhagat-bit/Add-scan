@@ -751,6 +751,27 @@ def risk_logic(row, median_word_count):
     else:
         return "OK", score, ", ".join(reasons)
 
+
+def manual_address_check(address, payment_method="COD", median_word_count=5):
+    """
+    Score a manually typed address using the same risk logic.
+    Neutral customer fields keep the result focused on the address quality.
+    """
+
+    clean_address = clean_text(address)
+
+    row = {
+        "address": clean_address,
+        "word_count": len(clean_address.split()),
+        "payment_method": normalize_payment(payment_method),
+        "cx_mobile": "9999999999",
+        "pincode": "110001",
+        "cx_name": "Manual Test",
+        "phone_count": 1
+    }
+
+    return risk_logic(row, median_word_count)
+
 def fill_missing_order_details(df):
     """
     Shopify sometimes gives multiple rows for one order.
@@ -798,6 +819,44 @@ uploaded_file = st.file_uploader(
     f"Upload {file_type} Orders CSV",
     type=["csv"]
 )
+
+st.subheader("Manual Address Test")
+
+manual_col1, manual_col2 = st.columns([4, 1])
+
+with manual_col1:
+    manual_address = st.text_input(
+        "Enter address to test",
+        placeholder="House no, street, area, city..."
+    )
+
+with manual_col2:
+    manual_payment = st.selectbox(
+        "Payment",
+        ["COD", "PREPAID"],
+        key="manual_payment"
+    )
+
+if st.button("Check Address"):
+    if manual_address.strip() == "":
+        st.warning("Please enter an address to test.")
+    else:
+        manual_flag, manual_score, manual_reasons = manual_address_check(
+            manual_address,
+            manual_payment
+        )
+
+        if manual_flag == "JUNK":
+            st.error(f"Result: {manual_flag} | Score: {manual_score}")
+        elif manual_flag == "SUSPICIOUS":
+            st.warning(f"Result: {manual_flag} | Score: {manual_score}")
+        else:
+            st.success(f"Result: {manual_flag} | Score: {manual_score}")
+
+        st.write(
+            "Reasons:",
+            manual_reasons if manual_reasons else "No risk reasons found"
+        )
 
 if uploaded_file:
 
