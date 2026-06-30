@@ -750,7 +750,7 @@ def style_risk_tags(df):
     return df.style.map(risk_tag_style, subset=risk_cols)
 
 
-def display_table(df, max_rows=500, style=True):
+def display_table(df, max_rows=200, style=True):
     """
     Render a capped preview so large uploads do not crash Streamlit Cloud.
     Downloads still use the complete dataframe.
@@ -765,9 +765,9 @@ def display_table(df, max_rows=500, style=True):
         )
 
     if style:
-        st.dataframe(style_risk_tags(display_df), width="stretch")
+        st.dataframe(style_risk_tags(display_df), use_container_width=True)
     else:
-        st.dataframe(display_df, width="stretch")
+        st.dataframe(display_df, use_container_width=True)
 
 
 def scanner_display_df(df):
