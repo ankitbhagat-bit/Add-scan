@@ -750,6 +750,26 @@ def style_risk_tags(df):
     return df.style.map(risk_tag_style, subset=risk_cols)
 
 
+def display_table(df, max_rows=500, style=True):
+    """
+    Render a capped preview so large uploads do not crash Streamlit Cloud.
+    Downloads still use the complete dataframe.
+    """
+
+    display_df = df.head(max_rows).copy()
+
+    if len(df) > max_rows:
+        st.caption(
+            f"Showing first {max_rows:,} of {len(df):,} rows. "
+            "Use the download button for the full data."
+        )
+
+    if style:
+        st.dataframe(style_risk_tags(display_df), width="stretch")
+    else:
+        st.dataframe(display_df, width="stretch")
+
+
 def scanner_display_df(df):
     return df.drop(columns=["risk_score", "risk_flag"], errors="ignore")
 
@@ -955,7 +975,7 @@ if uploaded_file:
     raw_df.fillna("", inplace=True)
 
     st.write("Uploaded File Preview")
-    st.dataframe(raw_df.head(5), use_container_width=True)
+    display_table(raw_df.head(5), style=False)
 
     df = standardize_file(raw_df, file_type)
     df.fillna("", inplace=True)
@@ -1172,7 +1192,7 @@ if uploaded_file:
     risk_distribution = scanner_df["risk_tag"].value_counts().reset_index()
     risk_distribution.columns = ["Risk Type", "Order Count"]
 
-    st.dataframe(style_risk_tags(risk_distribution), use_container_width=True)
+    display_table(risk_distribution)
 
     if file_type == "EasyEcom":
         st.subheader("EasyEcom Company Classification")
@@ -1183,7 +1203,7 @@ if uploaded_file:
             total_amount=("order_price", "sum")
         ).reset_index().sort_values(by="order_count", ascending=False)
 
-        st.dataframe(company_summary, use_container_width=True)
+        display_table(company_summary, style=False)
 
         st.subheader(
             f"EasyEcom Short Shipping Address Line 1 Orders ({len(filtered_short_address_df)})"
@@ -1229,7 +1249,7 @@ if uploaded_file:
             }
         )
 
-        st.dataframe(style_risk_tags(short_address_display_df), use_container_width=True)
+        display_table(short_address_display_df)
 
         csv_short_address = short_address_display_df.to_csv(index=False).encode("utf-8")
 
@@ -1254,7 +1274,7 @@ if uploaded_file:
         quantity_df = scanner_df[scanner_df["quantity"] > 1].copy()
         quantity_display_df = scanner_display_df(quantity_df)
 
-        st.dataframe(style_risk_tags(quantity_display_df), use_container_width=True)
+        display_table(quantity_display_df)
 
         csv_quantity = quantity_display_df.to_csv(index=False).encode("utf-8")
 
@@ -1273,7 +1293,7 @@ if uploaded_file:
             total_amount=("order_price", "sum")
         ).reset_index()
 
-        st.dataframe(payment_summary, use_container_width=True)
+        display_table(payment_summary, style=False)
 
         csv_payment = payment_summary.to_csv(index=False).encode("utf-8")
 
@@ -1292,7 +1312,7 @@ if uploaded_file:
         total_amount=("order_price", "sum")
     ).reset_index().sort_values(by="order_count", ascending=False)
 
-    st.dataframe(product_summary, use_container_width=True)
+    display_table(product_summary, style=False)
 
     csv_product = product_summary.to_csv(index=False).encode("utf-8")
 
@@ -1330,13 +1350,13 @@ if uploaded_file:
         duplicate_summary = duplicate_df["cx_mobile"].value_counts().reset_index()
         duplicate_summary.columns = ["Phone Number", "Order Count"]
 
-        st.dataframe(duplicate_summary, use_container_width=True)
+        display_table(duplicate_summary, style=False)
 
         st.write("Duplicate Order Details")
 
         duplicate_display_df = scanner_display_df(duplicate_df)
 
-        st.dataframe(style_risk_tags(duplicate_display_df), use_container_width=True)
+        display_table(duplicate_display_df)
 
         csv_dup = duplicate_display_df.to_csv(index=False).encode("utf-8")
 
@@ -1355,7 +1375,7 @@ if uploaded_file:
 
     filtered_display_df = scanner_display_df(filtered_df)
 
-    st.dataframe(style_risk_tags(filtered_display_df), use_container_width=True)
+    display_table(filtered_display_df)
 
     csv_risky = filtered_display_df.to_csv(index=False).encode("utf-8")
 
@@ -1374,7 +1394,7 @@ if uploaded_file:
 
     scanner_display = scanner_display_df(scanner_df)
 
-    st.dataframe(style_risk_tags(scanner_display), use_container_width=True)
+    display_table(scanner_display)
 
     csv_full = scanner_display.to_csv(index=False).encode("utf-8")
 
