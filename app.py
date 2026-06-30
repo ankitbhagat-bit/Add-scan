@@ -1,32 +1,6 @@
 import streamlit as st
+import pandas as pd
 import re
-import sys
-import traceback
-
-print("Address Risk Scanner: module import started", flush=True)
-
-
-def log_uncaught_exception(exc_type, exc_value, exc_traceback):
-    print("Address Risk Scanner: uncaught exception", flush=True)
-    traceback.print_exception(exc_type, exc_value, exc_traceback)
-
-
-sys.excepthook = log_uncaught_exception
-
-pd = None
-
-
-def get_pd():
-    global pd
-
-    if pd is None:
-        print("Address Risk Scanner: importing pandas", flush=True)
-        import pandas as pandas_module
-
-        pd = pandas_module
-        print(f"Address Risk Scanner: pandas {pd.__version__} imported", flush=True)
-
-    return pd
 
 st.set_page_config(page_title="Address Risk Scanner", layout="wide")
 
@@ -104,7 +78,6 @@ def normalize_payment(value):
 
 
 def safe_col(df, col_name, default=""):
-    pd = get_pd()
     df.columns = df.columns.str.strip()
 
     if col_name in df.columns:
@@ -114,7 +87,6 @@ def safe_col(df, col_name, default=""):
 
 
 def first_non_empty(df, cols, default=""):
-    pd = get_pd()
     df.columns = df.columns.str.strip()
 
     result = pd.Series([""] * len(df), index=df.index)
@@ -128,7 +100,6 @@ def first_non_empty(df, cols, default=""):
 
 
 def combine_cols(df, cols):
-    pd = get_pd()
     df.columns = df.columns.str.strip()
 
     available_cols = [col for col in cols if col in df.columns]
@@ -142,8 +113,6 @@ def combine_cols(df, cols):
 
 
 def numeric_col(df, col_name, default=0):
-    pd = get_pd()
-
     if col_name in df.columns:
         return pd.to_numeric(df[col_name], errors="coerce").fillna(default)
 
@@ -159,7 +128,6 @@ def map_unicommerce(df):
     Unicommerce structure.
     """
 
-    pd = get_pd()
     df.columns = df.columns.str.strip()
 
     mapped = pd.DataFrame(index=df.index)
@@ -301,7 +269,6 @@ def map_easyecom(df):
     Shipping Address Line 1/2, Shipping Zip Code, Payment Mode, etc.
     """
 
-    pd = get_pd()
     df.columns = df.columns.str.strip()
 
     mapped = pd.DataFrame(index=df.index)
@@ -513,7 +480,6 @@ def map_shopify(df):
     Strong fallback added for address, pincode, phone and payment mode.
     """
 
-    pd = get_pd()
     df.columns = df.columns.str.strip()
 
     mapped = pd.DataFrame(index=df.index)
@@ -929,8 +895,6 @@ def fill_missing_order_details(df):
     This fills missing fields using same order_id first, then same cx_mobile.
     """
 
-    pd = get_pd()
-
     fill_cols = [
         "cx_name",
         "cx_email",
@@ -1011,9 +975,6 @@ if st.button("Check Address"):
         )
 
 if uploaded_file:
-
-    pd = get_pd()
-    print("Address Risk Scanner: CSV upload received", flush=True)
 
     try:
         raw_df = pd.read_csv(uploaded_file, dtype=str)
