@@ -1,3 +1,8 @@
 streamlit==1.45.1
 pandas==2.2.3
 numpy==2.0.2
+pyarrow==18.1.0
+protobuf==5.29.5
+tornado==6.4.2
+altair==5.5.0
+pydeck==0.9.1
