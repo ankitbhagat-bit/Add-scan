@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import re
 
-st.set_page_config(page_title="Address Risk Scanner", layout="wide")
+st.set_page_config(page_title="Address Risk Scanner test", layout="wide")
 
 st.title("Address Risk Scanner")
 
